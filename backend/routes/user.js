@@ -1,6 +1,8 @@
 const router = require("express").Router();
 const User = require("../models/user");
 const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const authMiddleware = require("../middleware/authMiddleware");
 
 //signup-route
 router.post("/sign-up", async (req, res) => {
@@ -22,7 +24,7 @@ router.post("/sign-up", async (req, res) => {
 
     //check user exists or not
     const existingEmail = await User.findOne({ email: email });
-    const existingusername = await User.findOne({ username: username });
+    const existingUsername = await User.findOne({ username: username });
     if (existingEmail || existingUsername) {
       return res
         .status(400)
@@ -37,6 +39,86 @@ router.post("/sign-up", async (req, res) => {
     await newUser.save();
     return res.status(200).json({ message: "Account created" });
   } catch (error) {
-    res.status(400).json({ error });
+    res.status(500).json({ error });
   }
 });
+
+//sign-in route
+router.post("/sign-in", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ message: "All fields are required" });
+    }
+
+    //check user exists
+    const existingUser = await User.findOne({ email: email });
+    if (!existingUser) {
+      return res.status(400).json({ message: "Invalid credentials" });
+    }
+
+    //check password is matched or not
+    const isMatch = await bcrypt.compare(password, existingUser.password);
+    if (!isMatch) {
+      return res.status(400).json({ message: "Invalid credentials" });
+    }
+
+    //Generate JWT Token
+    const token = jwt.sign(
+      { id: existingUser._id, email: existingUser.email },
+      process.env.JWT_SECRET,
+      { expiresIn: "30d" }
+    );
+
+    res.cookie("podcasterUserToken", token, {
+      httpOnly: true,
+      maxAge: 30 * 24 * 60 * 60 * 100, //30days
+      secure: process.env.Node_Env === "production",
+      sameSite: "None",
+    });
+
+    return res.status(200).json({
+      id: existingUser._id,
+      username: existingUser.username,
+      email: email,
+      message: "Sign-in Successfully",
+    });
+  } catch (error) {
+    res.status(500).json({ error });
+  }
+});
+
+//logout
+router.post("/logout", async (req, res) => {
+  res.clearCookie("podcasterUserToken", {
+    httpOnly: true,
+  });
+  res.status(200).json({ message: "Logged out" });
+});
+
+//check cookie present or not
+router.get("/check-cookie", async (req, res) => {
+  const token = req.cookies.podcasterUserToken;
+  if (token) {
+    res.status(200).json({ message: true });
+  }
+  res.status(200).json({ message: false });
+});
+
+//Route to fetch user details
+router.get("user-details", authMiddleware, async (req, res) => {
+  try {
+    const { email } = req.user;
+    const existingUser = await User.findOne({ email: email }).select(
+      "-password"
+    );
+    return res.status(200).json({
+      user: existingUser,
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: error });
+  }
+});
+
+module.exports = router;
