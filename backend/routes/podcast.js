@@ -57,7 +57,7 @@ router.get("/get-podcasts", async (req, res) => {
 });
 
 //get-user-podcasts
-router.get("/get-podcasts", authMiddleware, async (req, res) => {
+router.get("/get-user-podcasts", authMiddleware, async (req, res) => {
   try {
     const { user } = req;
     const userid = user._id;
@@ -70,6 +70,35 @@ router.get("/get-podcasts", authMiddleware, async (req, res) => {
       );
     }
     return res.status(200).json({ data: data.podcasts });
+  } catch (error) {
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+//get podcast by id
+router.get("/get-podcast/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const podcasts = await Podcast.findById(id).populate("category");
+    return res.status(200).json({ data: podcasts });
+  } catch (error) {
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+//get podcast by categories
+router.get("/category/:cat", async (req, res) => {
+  try {
+    const { cat } = req.params;
+    const categories = await Category.find({ categoryName: cat }).populate({
+      path: "podcasts",
+      populate: { path: "category" },
+    });
+    let podcasts = [];
+    categories.forEach((category) => {
+      podcasts = [...podcasts, ...category.podcasts];
+    });
+    return res.status(200).json({ data: podcasts });
   } catch (error) {
     return res.status(500).json({ message: "Internal server error" });
   }
